@@ -7,7 +7,8 @@ import {
   useAccount, 
   useReadContract, 
   useWriteContract, 
-  useWaitForTransactionReceipt 
+  useWaitForTransactionReceipt,
+  useSwitchChain
 } from 'wagmi';
 import { formatEther, parseEther } from 'viem';
 import { 
@@ -18,7 +19,8 @@ import {
 } from '@/constants/contracts';
 
 export default function Dashboard() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chain } = useAccount();
+  const { switchChain } = useSwitchChain();
 
   // Write contract hook for Lending (loans & repayments)
   const { writeContract: writeLending, data: lendingHash, isPending: isLendingPending } = useWriteContract();
@@ -41,6 +43,12 @@ export default function Dashboard() {
     args: [address!],
     query: { enabled: !!address },
   });
+
+  console.log("🛠️ [DASHBOARD DEBUG] userAddress:  ", address);
+  console.log("🛠️ [DASHBOARD DEBUG] chainName:    ", chain?.name);
+  console.log("🛠️ [DASHBOARD DEBUG] chainId:      ", chain?.id);
+  console.log("🛠️ [DASHBOARD DEBUG] tokenAddress: ", LAND_TOKEN_ADDRESS);
+  console.log("🛠️ [DASHBOARD DEBUG] balanceData:  ", balanceData ? balanceData.toString() : 'undefined');
 
   // Read Loan Data
   const { data: loanData } = useReadContract({
@@ -161,7 +169,42 @@ export default function Dashboard() {
       <header className={styles.header}>
         <div className={styles.headerContent}>
           <h1>Mi Portfolio de Tierra</h1>
-          <p>Gestiona tus activos y préstamos en tiempo real.</p>
+          <p style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>Gestiona tus activos y préstamos en tiempo real.</span>
+            {chain?.id === 8453 ? (
+              <span style={{ 
+                padding: '2px 8px', 
+                borderRadius: '4px', 
+                fontSize: '0.75rem', 
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: '#10b981',
+                border: '1px solid rgba(16, 185, 129, 0.3)'
+              }}>
+                🟢 Red: {chain?.name} (ID: {chain?.id})
+              </span>
+            ) : (
+              <button 
+                onClick={() => switchChain && switchChain({ chainId: 8453 })}
+                style={{ 
+                  padding: '4px 10px', 
+                  borderRadius: '4px', 
+                  fontSize: '0.75rem', 
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: '#f87171',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s'
+                }}
+                title="Haz clic para cambiar a Base automáticamente"
+              >
+                🔴 Red incorrecta: Cambiar a Base ↗
+              </button>
+            )}
+          </p>
         </div>
         <div className={styles.statsRow}>
           <div className={styles.statCard}>
