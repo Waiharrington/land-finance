@@ -3,16 +3,17 @@
 import React from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { WagmiProvider, createConfig } from '@privy-io/wagmi';
-import { sepolia } from 'wagmi/chains';
+import { base, mainnet } from 'wagmi/chains';
 import { http } from 'wagmi';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 
 const queryClient = new QueryClient();
 
 const config = createConfig({
-  chains: [sepolia],
+  chains: [base, mainnet],
   transports: {
-    [sepolia.id]: http(),
+    [base.id]: http(),
+    [mainnet.id]: http(),
   },
 });
 
@@ -36,8 +37,8 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
             createOnLogin: 'users-without-wallets',
           }
         },
-        defaultChain: sepolia,
-        supportedChains: [sepolia],
+        defaultChain: base,
+        supportedChains: [base, mainnet],
       }}
     >
       <QueryClientProvider client={queryClient}>

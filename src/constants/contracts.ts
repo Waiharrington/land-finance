@@ -1,12 +1,13 @@
-export const LAND_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LAND_TOKEN_ADDRESS || "0x1ceC630e1873f61C766a1aA9dBfB8dB80eD2B5C9") as `0x${string}`;
-export const LAND_LENDING_ADDRESS = (process.env.NEXT_PUBLIC_LAND_LENDING_ADDRESS || "0x11577Efd62Af27D27d706A5e70682344628d0D19") as `0x${string}`;
+export const LAND_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_LAND_TOKEN_ADDRESS || "0x8dF87B6e4561D5d8d80830aFF9D95E5CA429ddFe") as `0x${string}`;
+export const LAND_LENDING_ADDRESS = (process.env.NEXT_PUBLIC_LAND_LENDING_ADDRESS || "0x21cf14Bf940172a6740F550C9B22e2fa19b2EE3C") as `0x${string}`;
 
 export const LAND_TOKEN_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function totalSupply() view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
   "function mint(address to, uint256 amount) external",
-  "function burn(address from, uint256 amount) external"
+  "function burn(address from, uint256 amount) external",
+  "function transfer(address to, uint256 amount) returns (bool)"
 ] as const;
 
 export const LAND_LENDING_ABI = [

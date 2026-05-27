@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import styles from './dashboard.module.css';
 import Image from 'next/image';
 import { 
@@ -19,9 +19,19 @@ import {
 
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
-  const { writeContract, data: hash } = useWriteContract();
-  
-  const { isLoading: isWaiting } = useWaitForTransactionReceipt({ hash });
+
+  // Write contract hook for Lending (loans & repayments)
+  const { writeContract: writeLending, data: lendingHash, isPending: isLendingPending } = useWriteContract();
+  const { isLoading: isLendingWaiting } = useWaitForTransactionReceipt({ hash: lendingHash });
+
+  // Write contract hook for LMT token transfers
+  const { writeContract: writeToken, data: tokenHash, isPending: isTokenPending } = useWriteContract();
+  const { isLoading: isTokenWaiting, isSuccess: isTokenSuccess } = useWaitForTransactionReceipt({ hash: tokenHash });
+
+  // Transfer states
+  const [transferRecipient, setTransferRecipient] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferError, setTransferError] = useState('');
 
   // Read Landing Balance
   const { data: balanceData } = useReadContract({
@@ -62,7 +72,7 @@ export default function Dashboard() {
       const amountToBorrow = (parseFloat(valueInUsd) * 0.8).toString();
       console.log("💰 Cantidad calculada para el crédito:", amountToBorrow);
 
-      writeContract({
+      writeLending({
         address: LAND_LENDING_ADDRESS,
         abi: LAND_LENDING_ABI,
         functionName: 'requestLoan',
@@ -79,11 +89,60 @@ export default function Dashboard() {
   };
 
   const handleRepay = () => {
-    writeContract({
+    writeLending({
       address: LAND_LENDING_ADDRESS,
       abi: LAND_LENDING_ABI,
       functionName: 'repayLoan',
     });
+  };
+
+  const handleTransfer = (e: React.FormEvent) => {
+    e.preventDefault();
+    setTransferError('');
+
+    if (!transferRecipient) {
+      setTransferError("La dirección de destino es obligatoria.");
+      return;
+    }
+
+    // Validación básica de dirección Ethereum
+    if (!/^0x[a-fA-F0-9]{40}$/.test(transferRecipient)) {
+      setTransferError("Dirección de destino no válida.");
+      return;
+    }
+
+    if (!transferAmount || parseFloat(transferAmount) <= 0) {
+      setTransferError("El monto a transferir debe ser mayor que cero.");
+      return;
+    }
+
+    const balanceInEther = balanceData ? parseFloat(formatEther(balanceData as bigint)) : 0;
+    if (parseFloat(transferAmount) > balanceInEther) {
+      setTransferError("Balance de LMT insuficiente.");
+      return;
+    }
+
+    try {
+      writeToken({
+        address: LAND_TOKEN_ADDRESS,
+        abi: LAND_TOKEN_ABI,
+        functionName: 'transfer',
+        args: [transferRecipient as `0x${string}`, parseEther(transferAmount)],
+      }, {
+        onSuccess: (hash) => {
+          console.log("✅ Transferencia enviada con éxito! Hash:", hash);
+          setTransferRecipient('');
+          setTransferAmount('');
+        },
+        onError: (err) => {
+          console.error("❌ Error en transferencia:", err);
+          setTransferError(err.message || "Error al firmar o enviar la transacción.");
+        }
+      });
+    } catch (err: any) {
+      console.error(err);
+      setTransferError(err.message || "Ocurrió un error inesperado.");
+    }
   };
 
   if (!isConnected) {
@@ -108,19 +167,19 @@ export default function Dashboard() {
           <div className={styles.statCard}>
             <span className={styles.label}>Balance LMT</span>
             <span className={styles.value}>
-              {balanceData ? formatEther(balanceData as bigint) : '0.00'}
+              {balanceData ? parseFloat(formatEther(balanceData as bigint)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
             </span>
           </div>
           <div className={styles.statCard}>
             <span className={styles.label}>Colateral Activo</span>
             <span className={styles.value}>
-              {loanData && (loanData as any)[3] ? `$${formatEther((loanData as any)[0])}` : '$0.00'}
+              {loanData && (loanData as any)[3] ? `$${parseFloat(formatEther((loanData as any)[0])).toLocaleString()}` : '$0.00'}
             </span>
           </div>
           <div className={styles.statCard}>
             <span className={styles.label}>Deuda con Intéres</span>
             <span className={styles.value}>
-              {debtData ? `$${formatEther(debtData as bigint)}` : '$0.00'}
+              {debtData ? `$${parseFloat(formatEther(debtData as bigint)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}` : '$0.00'}
             </span>
           </div>
         </div>
@@ -142,15 +201,15 @@ export default function Dashboard() {
                   <h3>{land.name}</h3>
                   <div className={styles.landDetails}>
                     <span>Área: {land.area}</span>
-                    <span>Valor: ${land.value}</span>
+                    <span>Valor: ${parseInt(land.value).toLocaleString()}</span>
                   </div>
                   <div className={styles.landActions}>
                     <button 
                       className={styles.loanBtn}
-                      disabled={isWaiting || (loanData && (loanData as any)[3])}
+                      disabled={isLendingWaiting || isLendingPending || (loanData && (loanData as any)[3])}
                       onClick={() => handleRequestLoan(land.id, land.value)}
                     >
-                      {isWaiting ? 'Procesando...' : 'Solicitar Préstamo'}
+                      {isLendingWaiting || isLendingPending ? 'Procesando...' : 'Solicitar Préstamo'}
                     </button>
                   </div>
                 </div>
@@ -160,6 +219,7 @@ export default function Dashboard() {
         </section>
 
         <aside className={styles.sidebar}>
+          {/* Loan Status Card */}
           <div className={styles.card}>
             <h3>Estado del Préstamo</h3>
             <div className={styles.loanProgress}>
@@ -189,10 +249,97 @@ export default function Dashboard() {
             <button 
               className={styles.payBtn}
               onClick={handleRepay}
-              disabled={isWaiting || !(loanData && (loanData as any)[3])}
+              disabled={isLendingWaiting || isLendingPending || !(loanData && (loanData as any)[3])}
             >
-              {isWaiting ? 'Procesando...' : 'Pagar Deuda'}
+              {isLendingWaiting || isLendingPending ? 'Procesando...' : 'Pagar Deuda'}
             </button>
+          </div>
+
+          {/* LMT Transfer Card */}
+          <div className={styles.transferCard}>
+            <h3>💸 Enviar Tokens LMT</h3>
+            
+            <form onSubmit={handleTransfer} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div className={styles.inputGroup}>
+                <label className={styles.inputLabel}>Dirección de Destino</label>
+                <div className={styles.inputWrapper}>
+                  <input 
+                    type="text" 
+                    placeholder="0x..." 
+                    className={styles.inputField}
+                    value={transferRecipient}
+                    onChange={(e) => setTransferRecipient(e.target.value)}
+                    disabled={isTokenWaiting || isTokenPending}
+                  />
+                </div>
+              </div>
+
+              <div className={styles.inputGroup}>
+                <label className={styles.inputLabel}>Cantidad (LMT)</label>
+                <div className={styles.inputWrapper}>
+                  <input 
+                    type="number" 
+                    step="any"
+                    placeholder="0.00" 
+                    className={styles.inputField}
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(e.target.value)}
+                    disabled={isTokenWaiting || isTokenPending}
+                  />
+                  <button 
+                    type="button" 
+                    className={styles.maxBtn}
+                    onClick={() => {
+                      if (balanceData) {
+                        setTransferAmount(formatEther(balanceData as bigint));
+                      }
+                    }}
+                    disabled={isTokenWaiting || isTokenPending || !balanceData}
+                  >
+                    MAX
+                  </button>
+                </div>
+              </div>
+
+              {transferError && (
+                <div className={`${styles.statusMsg} ${styles.error}`}>
+                  <span className={styles.statusIcon}>⚠️</span>
+                  <div className={styles.statusText}>{transferError}</div>
+                </div>
+              )}
+
+              {isTokenPending && (
+                <div className={`${styles.statusMsg} ${styles.info}`}>
+                  <span className={styles.statusIcon}>⌛</span>
+                  <div className={styles.statusText}>Firma la transacción en tu billetera...</div>
+                </div>
+              )}
+
+              {isTokenWaiting && (
+                <div className={`${styles.statusMsg} ${styles.info}`}>
+                  <span className={styles.statusIcon}><div className={styles.loadingSpinner} /></span>
+                  <div className={styles.statusText}>
+                    Procesando transferencia en Sepolia...
+                    {tokenHash && <span>Hash: {tokenHash.substring(0, 10)}...{tokenHash.substring(tokenHash.length - 8)}</span>}
+                  </div>
+                </div>
+              )}
+
+              {isTokenSuccess && !isTokenWaiting && !isTokenPending && (
+                <div className={`${styles.statusMsg} ${styles.success}`}>
+                  <span className={styles.statusIcon}>✅</span>
+                  <div className={styles.statusText}>¡Tokens transferidos con éxito!</div>
+                </div>
+              )}
+
+              <button 
+                type="submit" 
+                className={styles.transferBtn}
+                disabled={isTokenWaiting || isTokenPending || !transferRecipient || !transferAmount || parseFloat(transferAmount) <= 0}
+              >
+                {isTokenWaiting || isTokenPending ? 'Transfiriendo...' : 'Confirmar Envío'}
+              </button>
+            </form>
           </div>
         </aside>
       </div>
